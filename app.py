@@ -5,20 +5,19 @@ import os
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
+import uuid
+import time
 
 app = Flask(__name__)
 DOWNLOAD_DIR = '/downloads'
 
-download_state = {
-    'is_active': False,
-    'is_paused': False,
-    'title': 'Preparant...',
-    'percent': 0,
-    'speed': '0 B/s',
-    'current_file': ''
-}
+# Nuevo sistema de estado global
+tasks = {}
+queue_lock = threading.Lock()
+max_concurrent = 1
 
 pause_event = threading.Event()
+pause_event.set()
 stop_event = threading.Event()
 
 def extract_links_from_season(url):
@@ -37,22 +36,7 @@ def extract_links_from_season(url):
     except Exception:
         return [url]
 
-def progress_hook(d):
-    if stop_event.is_set():
-        raise Exception("STOP_REQUESTED")
-    
-    pause_event.wait()
-    
-    if d['status'] == 'downloading':
-        download_state['title'] = d.get('info_dict', {}).get('title', 'Descarregant...')
-        total = d.get('total_bytes') or d.get('total_bytes_estimate', 1)
-        downloaded = d.get('downloaded_bytes', 0)
-        download_state['percent'] = round((downloaded / total) * 100, 1) if total > 0 else 0
-        download_state['speed'] = d.get('_speed_str', '0 B/s').strip()
-        download_state['current_file'] = d.get('filename', '')
-
 def cleanup_temp_files():
-    """Cerca i elimina tots els arxius parcials recursivament a les subcarpetes"""
     for root, dirs, files in os.walk(DOWNLOAD_DIR):
         for filename in files:
             if filename.endswith('.part') or filename.endswith('.ytdl'):
@@ -62,18 +46,14 @@ def cleanup_temp_files():
                     pass
 
 def get_folder_name(url):
-    """Extreu el nom de la sèrie i temporada directament de la URL"""
     try:
         clean_url = url.rstrip('/')
         parts = clean_url.split('/')
-        
-        # Si és una temporada sencera
         if 'videos' in parts:
             idx = parts.index('videos')
             series = parts[idx-1].replace('-', ' ').title()
             season = parts[idx+1].replace('-', ' ').capitalize()
             return f"{series} - {season}"
-        # Si és un capítol solt
         elif 'video' in parts:
             idx = parts.index('video')
             series = parts[idx-1].replace('-', ' ').title()
@@ -82,17 +62,49 @@ def get_folder_name(url):
         pass
     return "Descàrregues 3Cat"
 
-def download_worker(url, quality):
-    urls = extract_links_from_season(url)
-    if quality == 'media':
-        # Busca 540p/480p. Si no existe, busca algo menor que 720p, y si no, baja a la peor disponible
-        format_selector = 'bestvideo[height<=540]+bestaudio/best[height<=540]/bestvideo[height<720]+bestaudio/best'
-    else:
-        format_selector = 'bestvideo+bestaudio/best'
+# Gestor de cola en segundo plano
+def queue_manager():
+    while True:
+        time.sleep(1)
+        if stop_event.is_set():
+            continue
+        pause_event.wait()
+        
+        with queue_lock:
+            active_count = sum(1 for t in tasks.values() if t['status'] == 'downloading')
+            pending_tasks = [t for t in tasks.values() if t['status'] == 'pending']
+            
+            while active_count < max_concurrent and pending_tasks:
+                task = pending_tasks.pop(0)
+                task['status'] = 'downloading'
+                threading.Thread(target=download_worker, args=(task['id'],)).start()
+                active_count += 1
 
-    # Determinar subcarpeta (yt-dlp la crea automàticament si no existeix)
-    folder_name = get_folder_name(url)
-    target_dir = os.path.join(DOWNLOAD_DIR, folder_name)
+threading.Thread(target=queue_manager, daemon=True).start()
+
+def get_progress_hook(task_id):
+    def hook(d):
+        if stop_event.is_set():
+            raise Exception("STOP_REQUESTED")
+        pause_event.wait()
+        
+        task = tasks.get(task_id)
+        if not task: return
+        
+        if d['status'] == 'downloading':
+            task['title'] = d.get('info_dict', {}).get('title', task['title'])
+            total = d.get('total_bytes') or d.get('total_bytes_estimate', 1)
+            downloaded = d.get('downloaded_bytes', 0)
+            task['percent'] = round((downloaded / total) * 100, 1) if total > 0 else 0
+            task['speed'] = d.get('_speed_str', '0 B/s').strip()
+    return hook
+
+def download_worker(task_id):
+    task = tasks.get(task_id)
+    if not task: return
+    
+    target_dir = os.path.join(DOWNLOAD_DIR, get_folder_name(task['url']))
+    format_selector = 'bestvideo[height<=540]+bestaudio/best[height<=540]/bestvideo[height<720]+bestaudio/best' if task['quality'] == 'media' else 'bestvideo+bestaudio/best'
 
     ydl_opts = {
         'format': format_selector,
@@ -100,46 +112,50 @@ def download_worker(url, quality):
         'merge_output_format': 'mkv',
         'ignoreerrors': True,
         'nocolor': True,
-        'progress_hooks': [progress_hook],
-        
-        # Subtítols
+        'progress_hooks': [get_progress_hook(task_id)],
         'writesubtitles': True,
         'subtitleslangs': ['ca', 'es', 'en'], 
-        
-        # 1. Remux a MKV y 2. Incrustar VTT directamente (sin conversión)
         'postprocessors': [
             {'key': 'FFmpegVideoRemuxer', 'preferedformat': 'mkv'},
             {'key': 'FFmpegEmbedSubtitle'}
         ],
-        
-        # Como ya no procesamos el subtítulo por separado, este comando vuelve a ser seguro
-        'postprocessor_args': ['-metadata:s:a:0', 'language=cat']
+        'postprocessor_args': {
+            'VideoRemuxer': ['-metadata:s:a:0', 'language=cat'],
+            'EmbedSubtitle': ['-metadata:s:a:0', 'language=cat']
+        }
     }
-
-    download_state['is_active'] = True
-    download_state['is_paused'] = False
-    download_state['percent'] = 0
-    pause_event.set()
-    stop_event.clear()
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            for u in urls:
-                if stop_event.is_set():
-                    break
-                try:
-                    ydl.download([u])
-                except Exception as e:
-                    if str(e) == "STOP_REQUESTED":
-                        break
-    finally:
-        download_state['is_active'] = False
+            ydl.download([task['url']])
+        
         if stop_event.is_set():
-            cleanup_temp_files()
+            task['status'] = 'failed'
         else:
-            download_state['title'] = 'Totes les descàrregues finalitzades'
-            download_state['percent'] = 100
-        download_state['speed'] = ''
+            task['status'] = 'finished'
+            task['percent'] = 100
+    except Exception:
+        task['status'] = 'failed'
+
+def extract_and_queue(url, quality, concurrent):
+    global max_concurrent
+    max_concurrent = int(concurrent)
+    
+    urls = extract_links_from_season(url)
+    with queue_lock:
+        for u in urls:
+            task_id = str(uuid.uuid4())
+            # Nombre temporal extraído de la URL hasta que yt-dlp lea el metadato real
+            temp_title = u.strip('/').split('/')[-1].replace('-', ' ').title()
+            tasks[task_id] = {
+                'id': task_id,
+                'title': temp_title,
+                'url': u,
+                'status': 'pending',
+                'percent': 0,
+                'speed': '',
+                'quality': quality
+            }
 
 @app.route('/')
 def index():
@@ -147,35 +163,39 @@ def index():
 
 @app.route('/download', methods=['POST'])
 def start_download():
-    if download_state['is_active']:
-        return jsonify({"status": "error", "message": "En aquests moments hi ha una descàrrega en curs."})
-    
     url = request.form.get('url')
     quality = request.form.get('quality')
+    concurrent = request.form.get('concurrent', 1)
     
     if not url:
         return jsonify({"status": "error", "message": "URL no proporcionada."})
 
-    threading.Thread(target=download_worker, args=(url, quality)).start()
+    threading.Thread(target=extract_and_queue, args=(url, quality, concurrent)).start()
     return jsonify({"status": "success"})
 
 @app.route('/status', methods=['GET'])
 def get_status():
-    return jsonify(download_state)
+    return jsonify({
+        'is_paused': not pause_event.is_set(),
+        'tasks': list(tasks.values())
+    })
 
 @app.route('/action', methods=['POST'])
 def handle_action():
     action = request.json.get('action')
     if action == 'pause':
         pause_event.clear()
-        download_state['is_paused'] = True
-        download_state['speed'] = 'Pausat'
     elif action == 'resume':
         pause_event.set()
-        download_state['is_paused'] = False
     elif action == 'stop':
         stop_event.set()
         pause_event.set()
+        with queue_lock:
+            for t in tasks.values():
+                if t['status'] in ['pending', 'downloading']:
+                    t['status'] = 'failed'
+        cleanup_temp_files()
+        threading.Timer(2.0, stop_event.clear).start() # Restablece para futuras descargas
     return jsonify({"status": "success"})
 
 if __name__ == '__main__':
