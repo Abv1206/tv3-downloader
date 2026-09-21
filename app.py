@@ -2,12 +2,37 @@ from flask import Flask, render_template, request, jsonify
 import yt_dlp
 import threading
 import os
+import requests
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin
 
 app = Flask(__name__)
 DOWNLOAD_DIR = '/downloads'
 
+def extract_links_from_season(url):
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        response = requests.get(url, headers=headers)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        links = []
+        
+        # Busca cualquier enlace dentro de la página que contenga la palabra 'video'
+        for a in soup.find_all('a', href=True):
+            href = a['href']
+            if '/video/' in href:
+                full_url = urljoin(url, href)
+                # Evita duplicados y no incluye la propia URL raíz de la temporada
+                if full_url not in links and full_url != url:
+                    links.append(full_url)
+        return links
+    except Exception as e:
+        print(f"Error al analizar la web: {e}")
+        return [url] # Si falla, intenta descargar la URL original como último recurso
+
 def download_video(url, quality):
-    # Definir formato según la calidad elegida
+    urls_to_download = extract_links_from_season(url)
+    print(f"Iniciando descarga de {len(urls_to_download)} enlaces encontrados...")
+
     if quality == 'media':
         format_selector = 'best[height<=720]/bestvideo[height<=720]+bestaudio/best'
     else:
@@ -17,15 +42,15 @@ def download_video(url, quality):
         'format': format_selector,
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
         'merge_output_format': 'mp4',
-        'noplaylist': False, # Permite descargar listas/temporadas enteras si la URL lo soporta
-        'extract_flat': False
+        'ignoreerrors': True, # Continúa con el siguiente capítulo si uno da error
+        'no_warnings': True
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
+            ydl.download(urls_to_download)
     except Exception as e:
-        print(f"Error en la descarga: {e}")
+        print(f"Error en yt-dlp: {e}")
 
 @app.route('/')
 def index():
@@ -39,11 +64,10 @@ def start_download():
     if not url:
         return jsonify({"status": "error", "message": "URL no proporcionada"}), 400
 
-    # Ejecutar en un hilo separado para no bloquear la interfaz web
     thread = threading.Thread(target=download_video, args=(url, quality))
     thread.start()
     
-    return jsonify({"status": "success", "message": "Descarga iniciada en segundo plano."})
+    return jsonify({"status": "success", "message": "Descarga iniciada. Revisa los logs de OMV para ver el progreso."})
 
 if __name__ == '__main__':
     if not os.path.exists(DOWNLOAD_DIR):
