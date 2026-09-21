@@ -106,18 +106,14 @@ def download_worker(url, quality):
         'writesubtitles': True,
         'subtitleslangs': ['ca', 'es', 'en'], 
         
-        # Cadena de post-processament en ordre estricte
+        # 1. Remux a MKV y 2. Incrustar VTT directamente (sin conversión)
         'postprocessors': [
-            {'key': 'FFmpegSubtitlesConvertor', 'format': 'srt'},
             {'key': 'FFmpegVideoRemuxer', 'preferedformat': 'mkv'},
             {'key': 'FFmpegEmbedSubtitle'}
         ],
         
-        # Aplicar metadades d'àudio NOMÉS als processos de vídeo per no trencar els subtítols
-        'postprocessor_args': {
-            'VideoRemuxer': ['-metadata:s:a:0', 'language=cat'],
-            'EmbedSubtitle': ['-metadata:s:a:0', 'language=cat']
-        }
+        # Como ya no procesamos el subtítulo por separado, este comando vuelve a ser seguro
+        'postprocessor_args': ['-metadata:s:a:0', 'language=cat']
     }
 
     download_state['is_active'] = True
