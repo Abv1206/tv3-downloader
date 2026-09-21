@@ -84,7 +84,11 @@ def get_folder_name(url):
 
 def download_worker(url, quality):
     urls = extract_links_from_season(url)
-    format_selector = 'best[height<=720]/bestvideo[height<=720]+bestaudio/best' if quality == 'media' else 'bestvideo+bestaudio/best'
+    if quality == 'media':
+        # Busca 540p/480p. Si no existe, busca algo menor que 720p, y si no, baja a la peor disponible
+        format_selector = 'bestvideo[height<=540]+bestaudio/best[height<=540]/bestvideo[height<720]+bestaudio/best'
+    else:
+        format_selector = 'bestvideo+bestaudio/best'
 
     # Determinar subcarpeta (yt-dlp la crea automàticament si no existeix)
     folder_name = get_folder_name(url)
