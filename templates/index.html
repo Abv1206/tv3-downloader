@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Descargador videos TV3/3XL</title>
+    <title>Descarregador TV3/3XL</title>
     <style>
         body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
         .form-group { margin-bottom: 15px; }
@@ -24,24 +24,24 @@
     </style>
 </head>
 <body>
-    <h2>Descargador Videos TV3/3XL</h2>
+    <h2>Descarregador vídeos TV3/3XL</h2>
     <form id="downloadForm">
         <div class="form-group">
-            <label for="url">URL de la Temporada/Capítulo:</label>
+            <label for="url">URL de la Temporada/Capítol:</label>
             <input type="text" id="url" name="url" required placeholder="https://www.3cat.cat/...">
         </div>
         <div class="form-group">
-            <label for="quality">Calidad:</label>
+            <label for="quality">Qualitat:</label>
             <select id="quality" name="quality">
-                <option value="media" selected>Media (Hasta 720p)</option>
-                <option value="alta">Alta (Máxima disponible)</option>
+                <option value="media" selected>Mitjana (Fins a 720p)</option>
+                <option value="alta">Alta (Màxima disponible)</option>
             </select>
         </div>
-        <button type="submit" class="btn-primary">Iniciar Descarga</button>
+        <button type="submit" class="btn-primary">Iniciar Descàrrega</button>
     </form>
 
     <div id="progress-container">
-        <h4 id="video-title">Preparando...</h4>
+        <h4 id="video-title">Preparant...</h4>
         <div class="progress-bar-bg">
             <div id="progress-bar"></div>
         </div>
@@ -51,7 +51,7 @@
         </div>
         <div class="controls">
             <button id="btn-pause" class="btn-pause" onclick="sendAction('pause')">Pausar</button>
-            <button id="btn-stop" class="btn-stop" onclick="sendAction('stop')">Detener</button>
+            <button id="btn-stop" class="btn-stop" onclick="sendAction('stop')">Finalitzar</button>
         </div>
     </div>
 
@@ -67,6 +67,7 @@
             
             if(result.status === 'success') {
                 document.getElementById('progress-container').style.display = 'block';
+                document.querySelector('.progress-bar-bg').style.display = 'block'; // Mostrar barra
                 document.getElementById('btn-pause').style.display = 'block';
                 document.getElementById('btn-stop').style.display = 'block';
                 startPolling();
@@ -89,7 +90,7 @@
                 
                 const btnPause = document.getElementById('btn-pause');
                 if (data.is_paused) {
-                    btnPause.textContent = 'Reanudar';
+                    btnPause.textContent = 'Reprendre';
                     btnPause.className = 'btn-resume';
                     btnPause.onclick = () => sendAction('resume');
                 } else {
@@ -98,7 +99,6 @@
                     btnPause.onclick = () => sendAction('pause');
                 }
                 
-                // Ocultar botones al finalizar toda la cola
                 if (!data.is_active && data.percent === 100) {
                     clearInterval(pollInterval);
                     document.getElementById('btn-pause').style.display = 'none';
@@ -116,8 +116,10 @@
             
             if (action === 'stop') {
                 clearInterval(pollInterval);
-                document.getElementById('video-title').textContent = 'Descargas detenidas.';
+                document.getElementById('video-title').textContent = 'Descargas finalitzades';
                 document.getElementById('speed-text').textContent = '';
+                document.getElementById('percent-text').textContent = '';
+                document.querySelector('.progress-bar-bg').style.display = 'none'; // Ocultar barra verde
                 document.getElementById('btn-pause').style.display = 'none';
                 document.getElementById('btn-stop').style.display = 'none';
             }
