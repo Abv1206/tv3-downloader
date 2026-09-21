@@ -137,7 +137,8 @@ def download_worker(task_id):
     task = tasks.get(task_id)
     if not task: return
     
-    target_dir = os.path.join(DOWNLOAD_DIR, get_folder_name(task['url']))
+    # Leemos la carpeta que se le asignó al añadirlo a la cola, no calculamos nada nuevo
+    target_dir = os.path.join(DOWNLOAD_DIR, task['folder'])
     format_selector = 'bestvideo[height<=540]+bestaudio/best[height<=540]/bestvideo[height<720]+bestaudio/best' if task['quality'] == 'media' else 'bestvideo+bestaudio/best'
 
     ydl_opts = {
@@ -171,15 +172,20 @@ def download_worker(task_id):
     except Exception:
         task['status'] = 'failed'
 
+
 def extract_and_queue(url, quality, concurrent):
     global max_concurrent
     max_concurrent = int(concurrent)
     
+    # 1. Calculamos la carpeta base UNA SOLA VEZ usando la URL original (con el scraper inteligente)
+    base_folder = get_folder_name(url)
+    
+    # 2. Extraemos todos los links de los capítulos
     urls = extract_links_from_season(url)
+    
     with queue_lock:
         for u in urls:
             task_id = str(uuid.uuid4())
-            # Nombre temporal extraído de la URL hasta que yt-dlp lea el metadato real
             temp_title = u.strip('/').split('/')[-1].replace('-', ' ').title()
             tasks[task_id] = {
                 'id': task_id,
@@ -188,7 +194,8 @@ def extract_and_queue(url, quality, concurrent):
                 'status': 'pending',
                 'percent': 0,
                 'speed': '',
-                'quality': quality
+                'quality': quality,
+                'folder': base_folder  # 3. Inyectamos la MISMA carpeta a todos los capítulos
             }
 
 @app.route('/')
