@@ -9,11 +9,10 @@ from urllib.parse import urljoin
 app = Flask(__name__)
 DOWNLOAD_DIR = '/downloads'
 
-# Estado global de la descarga
 download_state = {
     'is_active': False,
     'is_paused': False,
-    'title': 'Preparando...',
+    'title': 'Preparant...',
     'percent': 0,
     'speed': '0 B/s',
     'current_file': ''
@@ -42,22 +41,27 @@ def progress_hook(d):
     if stop_event.is_set():
         raise Exception("STOP_REQUESTED")
     
-    # Si el evento no está 'set' (Pausado), el hilo se congela aquí hasta que se reanude
     pause_event.wait()
     
     if d['status'] == 'downloading':
-        download_state['title'] = d.get('info_dict', {}).get('title', 'Descargando...')
-        
+        download_state['title'] = d.get('info_dict', {}).get('title', 'Descarregant...')
         total = d.get('total_bytes') or d.get('total_bytes_estimate', 1)
         downloaded = d.get('downloaded_bytes', 0)
         download_state['percent'] = round((downloaded / total) * 100, 1) if total > 0 else 0
-        
         download_state['speed'] = d.get('_speed_str', '0 B/s').strip()
         download_state['current_file'] = d.get('filename', '')
 
+def cleanup_temp_files():
+    """Barre y elimina todos los archivos parciales del directorio"""
+    for filename in os.listdir(DOWNLOAD_DIR):
+        if filename.endswith('.part') or filename.endswith('.ytdl'):
+            try:
+                os.remove(os.path.join(DOWNLOAD_DIR, filename))
+            except:
+                pass
+
 def download_worker(url, quality):
     urls = extract_links_from_season(url)
-    
     format_selector = 'best[height<=720]/bestvideo[height<=720]+bestaudio/best' if quality == 'media' else 'bestvideo+bestaudio/best'
 
     ydl_opts = {
@@ -65,7 +69,7 @@ def download_worker(url, quality):
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
         'merge_output_format': 'mp4',
         'ignoreerrors': True,
-        'nocolor': True, # Facilita la lectura de los metadatos de progreso
+        'nocolor': True,
         'progress_hooks': [progress_hook]
     }
 
@@ -77,21 +81,21 @@ def download_worker(url, quality):
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download(urls)
-    except Exception as e:
-        if str(e) == "STOP_REQUESTED" and download_state['current_file']:
-            # Limpieza de archivos a medias (temporales de yt-dlp y ffmpeg)
-            base_path = download_state['current_file']
-            for ext in ['', '.part', '.ytdl']:
-                if os.path.exists(base_path + ext):
-                    try:
-                        os.remove(base_path + ext)
-                    except:
-                        pass
+            # Iteramos uno a uno. Si se pulsa detener, rompemos el bucle limpiamente
+            for u in urls:
+                if stop_event.is_set():
+                    break
+                try:
+                    ydl.download([u])
+                except Exception as e:
+                    if str(e) == "STOP_REQUESTED":
+                        break
     finally:
         download_state['is_active'] = False
-        if not stop_event.is_set():
-            download_state['title'] = 'Todas las descargas finalizadas'
+        if stop_event.is_set():
+            cleanup_temp_files()
+        else:
+            download_state['title'] = 'Totes les descàrregues finalitzades'
             download_state['percent'] = 100
         download_state['speed'] = ''
 
@@ -102,7 +106,7 @@ def index():
 @app.route('/download', methods=['POST'])
 def start_download():
     if download_state['is_active']:
-        return jsonify({"status": "error", "message": "Ya hay una descarga en curso."})
+        return jsonify({"status": "error", "message": "En aquests moments hi ha una descàrrega en curs."})
     
     url = request.form.get('url')
     quality = request.form.get('quality')
@@ -123,13 +127,13 @@ def handle_action():
     if action == 'pause':
         pause_event.clear()
         download_state['is_paused'] = True
-        download_state['speed'] = 'Pausado'
+        download_state['speed'] = 'Pausat'
     elif action == 'resume':
         pause_event.set()
         download_state['is_paused'] = False
     elif action == 'stop':
         stop_event.set()
-        pause_event.set() # Desbloquea forzosamente por si estaba pausado
+        pause_event.set()
     return jsonify({"status": "success"})
 
 if __name__ == '__main__':
