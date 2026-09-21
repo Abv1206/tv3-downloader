@@ -102,23 +102,24 @@ def download_worker(url, quality):
         'nocolor': True,
         'progress_hooks': [progress_hook],
         
-        # Subtítulos
+        # Subtítols
         'writesubtitles': True,
         'subtitleslangs': ['ca', 'es', 'en'], 
         
-        # Cadena de post-procesamiento en orden estricto
+        # Cadena de post-processament en ordre estricte
         'postprocessors': [
-            # 1. Convierte el VTT original a SRT para máxima compatibilidad
             {'key': 'FFmpegSubtitlesConvertor', 'format': 'srt'},
-            # 2. Fuerza la conversión del contenedor final a MKV
             {'key': 'FFmpegVideoRemuxer', 'preferedformat': 'mkv'},
-            # 3. Incrusta los subtítulos SRT dentro del MKV
             {'key': 'FFmpegEmbedSubtitle'}
         ],
         
-        # Forzar metadatos solo de la pista de audio principal (0) a catalán
-        'postprocessor_args': ['-metadata:s:a:0', 'language=cat']
+        # Aplicar metadades d'àudio NOMÉS als processos de vídeo per no trencar els subtítols
+        'postprocessor_args': {
+            'VideoRemuxer': ['-metadata:s:a:0', 'language=cat'],
+            'EmbedSubtitle': ['-metadata:s:a:0', 'language=cat']
+        }
     }
+
     download_state['is_active'] = True
     download_state['is_paused'] = False
     download_state['percent'] = 0
