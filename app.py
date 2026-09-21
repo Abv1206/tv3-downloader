@@ -67,10 +67,18 @@ def download_worker(url, quality):
     ydl_opts = {
         'format': format_selector,
         'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
-        'merge_output_format': 'mp4',
+        'merge_output_format': 'mkv',
         'ignoreerrors': True,
         'nocolor': True,
-        'progress_hooks': [progress_hook]
+        'progress_hooks': [progress_hook],
+        
+        # Subtítulos
+        'writesubtitles': True,
+        'subtitleslangs': ['ca', 'es', 'en'], 
+        'postprocessors': [{'key': 'FFmpegEmbedSubtitle'}],
+        
+        # Forzar metadatos solo de la pista de audio principal (0) a catalán
+        'postprocessor_args': ['-metadata:s:a:0', 'language=cat']
     }
 
     download_state['is_active'] = True
