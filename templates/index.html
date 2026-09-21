@@ -8,9 +8,19 @@
         .form-group { margin-bottom: 15px; }
         label { display: block; margin-bottom: 5px; font-weight: bold; }
         input[type="text"], select { width: 100%; padding: 10px; box-sizing: border-box; }
-        button { padding: 10px 20px; background-color: #007bff; color: white; border: none; cursor: pointer; }
-        button:hover { background-color: #0056b3; }
-        #message { margin-top: 20px; font-weight: bold; }
+        button { padding: 10px 20px; border: none; cursor: pointer; color: white; border-radius: 4px; font-weight: bold;}
+        .btn-primary { background-color: #007bff; }
+        .btn-primary:hover { background-color: #0056b3; }
+        .btn-pause { background-color: #ffc107; color: black; }
+        .btn-resume { background-color: #17a2b8; }
+        .btn-stop { background-color: #dc3545; }
+        
+        #progress-container { display: none; margin-top: 30px; padding: 20px; border: 1px solid #ddd; border-radius: 8px; }
+        #video-title { margin: 0 0 10px 0; font-size: 16px; color: #333; }
+        .progress-bar-bg { background-color: #e9ecef; width: 100%; height: 20px; border-radius: 10px; overflow: hidden; margin-bottom: 10px; }
+        #progress-bar { background-color: #28a745; width: 0%; height: 100%; transition: width 0.3s ease; }
+        .stats { display: flex; justify-content: space-between; font-size: 14px; color: #555; font-weight: bold; }
+        .controls { margin-top: 15px; display: flex; gap: 10px; }
     </style>
 </head>
 <body>
@@ -18,7 +28,7 @@
     <form id="downloadForm">
         <div class="form-group">
             <label for="url">URL de la Temporada/Capítulo:</label>
-            <input type="text" id="url" name="url" required placeholder="https://www.ccma.cat/3cat/...">
+            <input type="text" id="url" name="url" required placeholder="https://www.3cat.cat/...">
         </div>
         <div class="form-group">
             <label for="quality">Calidad:</label>
@@ -27,34 +37,91 @@
                 <option value="alta">Alta (Máxima disponible)</option>
             </select>
         </div>
-        <button type="submit">Iniciar Descarga</button>
+        <button type="submit" class="btn-primary">Iniciar Descarga</button>
     </form>
-    <div id="message"></div>
+
+    <div id="progress-container">
+        <h4 id="video-title">Preparando...</h4>
+        <div class="progress-bar-bg">
+            <div id="progress-bar"></div>
+        </div>
+        <div class="stats">
+            <span id="percent-text">0%</span>
+            <span id="speed-text">0 B/s</span>
+        </div>
+        <div class="controls">
+            <button id="btn-pause" class="btn-pause" onclick="sendAction('pause')">Pausar</button>
+            <button id="btn-stop" class="btn-stop" onclick="sendAction('stop')">Detener</button>
+        </div>
+    </div>
 
     <script>
+        let pollInterval;
+
         document.getElementById('downloadForm').onsubmit = async (e) => {
             e.preventDefault();
             const formData = new FormData(e.target);
-            const messageDiv = document.getElementById('message');
             
-            messageDiv.textContent = "Procesando...";
-            messageDiv.style.color = "black";
-
-            const response = await fetch('/download', {
-                method: 'POST',
-                body: formData
-            });
+            const response = await fetch('/download', { method: 'POST', body: formData });
             const result = await response.json();
             
             if(result.status === 'success') {
-                messageDiv.textContent = result.message;
-                messageDiv.style.color = "green";
-                e.target.reset();
+                document.getElementById('progress-container').style.display = 'block';
+                document.getElementById('btn-pause').style.display = 'block';
+                document.getElementById('btn-stop').style.display = 'block';
+                startPolling();
             } else {
-                messageDiv.textContent = result.message;
-                messageDiv.style.color = "red";
+                alert(result.message);
             }
         };
+
+        function startPolling() {
+            if (pollInterval) clearInterval(pollInterval);
+            
+            pollInterval = setInterval(async () => {
+                const res = await fetch('/status');
+                const data = await res.json();
+                
+                document.getElementById('video-title').textContent = data.title;
+                document.getElementById('progress-bar').style.width = data.percent + '%';
+                document.getElementById('percent-text').textContent = data.percent + '%';
+                document.getElementById('speed-text').textContent = data.speed;
+                
+                const btnPause = document.getElementById('btn-pause');
+                if (data.is_paused) {
+                    btnPause.textContent = 'Reanudar';
+                    btnPause.className = 'btn-resume';
+                    btnPause.onclick = () => sendAction('resume');
+                } else {
+                    btnPause.textContent = 'Pausar';
+                    btnPause.className = 'btn-pause';
+                    btnPause.onclick = () => sendAction('pause');
+                }
+                
+                // Ocultar botones al finalizar toda la cola
+                if (!data.is_active && data.percent === 100) {
+                    clearInterval(pollInterval);
+                    document.getElementById('btn-pause').style.display = 'none';
+                    document.getElementById('btn-stop').style.display = 'none';
+                }
+            }, 1000);
+        }
+
+        async function sendAction(action) {
+            await fetch('/action', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: action })
+            });
+            
+            if (action === 'stop') {
+                clearInterval(pollInterval);
+                document.getElementById('video-title').textContent = 'Descargas detenidas.';
+                document.getElementById('speed-text').textContent = '';
+                document.getElementById('btn-pause').style.display = 'none';
+                document.getElementById('btn-stop').style.display = 'none';
+            }
+        }
     </script>
 </body>
 </html>
