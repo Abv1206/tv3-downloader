@@ -107,7 +107,7 @@ def download_worker(url, quality):
             # 1. Convierte el VTT original a SRT para máxima compatibilidad
             {'key': 'FFmpegSubtitlesConvertor', 'format': 'srt'},
             # 2. Fuerza la conversión del contenedor final a MKV
-            {'key': 'FFmpegVideoConvertor', 'preferedformat': 'mkv'},
+            {'key': 'FFmpegVideoRemuxer', 'preferedformat': 'mkv'},
             # 3. Incrusta los subtítulos SRT dentro del MKV
             {'key': 'FFmpegEmbedSubtitle'}
         ],
