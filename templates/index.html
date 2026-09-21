@@ -40,8 +40,6 @@
         .progress-bar-bg { background-color: #e9ecef; width: 100%; height: 8px; border-radius: 4px; overflow: hidden; margin-top: 5px; margin-bottom: 5px; }
         .progress-bar { background-color: #007bff; width: 0%; height: 100%; transition: width 0.3s ease; }
     </style>
-    <!-- Motor de animaciones fluidas (Aceleración/Desaceleración) -->
-    <script src="https://cdn.jsdelivr.net/npm/@formkit/auto-animate@1/index.min.js"></script>
 </head>
 <body>
     <h2>Descarregador vídeos TV3/3XL</h2>
@@ -73,8 +71,8 @@
     </form>
 
     <div class="controls" id="controls">
-        <button id="btn-pause" class="btn-pause" onclick="sendAction('pause')">Pausar</button>
-        <button id="btn-stop" class="btn-stop" onclick="sendAction('stop')">Cancel·lar tot</button>
+        <button id="btn-pause" class="btn-pause" onclick="window.sendAction('pause')">Pausar</button>
+        <button id="btn-stop" class="btn-stop" onclick="window.sendAction('stop')">Cancel·lar tot</button>
     </div>
 
     <div class="board" id="board" style="display: none;">
@@ -92,12 +90,15 @@
         </div>
     </div>
 
-    <script>
+    <!-- Implementación nativa por módulos para asegurar la carga de animaciones -->
+    <script type="module">
+        import autoAnimate from 'https://cdn.jsdelivr.net/npm/@formkit/auto-animate@1/index.mjs';
+
         let pollInterval;
         let isPolling = false;
 
-        // Activar animaciones en las 3 columnas
         window.addEventListener('DOMContentLoaded', () => {
+            // Inicializar las columnas con animaciones fluidas
             autoAnimate(document.getElementById('col-pending'));
             autoAnimate(document.getElementById('col-finished'));
             autoAnimate(document.getElementById('col-failed'));
@@ -120,7 +121,7 @@
             const result = await response.json();
             
             if(result.status === 'success') {
-                e.target.reset(); // Limpia la URL para añadir más cosas
+                e.target.reset(); 
                 showBoard();
                 if (!isPolling) startPolling();
             }
@@ -145,64 +146,92 @@
             const colFinished = document.getElementById('col-finished');
             const colFailed = document.getElementById('col-failed');
 
-            // Actualizar el botón de pausa
             const btnPause = document.getElementById('btn-pause');
             if (data.is_paused) {
                 btnPause.textContent = 'Reprendre';
                 btnPause.className = 'btn-resume';
-                btnPause.onclick = () => sendAction('resume');
+                btnPause.onclick = () => window.sendAction('resume');
             } else {
                 btnPause.textContent = 'Pausar';
                 btnPause.className = 'btn-pause';
-                btnPause.onclick = () => sendAction('pause');
+                btnPause.onclick = () => window.sendAction('pause');
             }
 
             data.tasks.forEach(task => {
                 let el = document.getElementById(task.id);
                 
-                // Si no existe, creamos la tarjeta
+                // Si la tarjeta no existe, la creamos desde cero
                 if (!el) {
                     el = document.createElement('div');
                     el.id = task.id;
                     el.className = 'task-card';
+                    el.dataset.status = ''; // Usamos un dataset para no alterar el DOM innecesariamente
+                    
+                    el.innerHTML = `
+                        <div class="task-title">${task.title}</div>
+                        <div class="card-body"></div>
+                    `;
+                    colPending.appendChild(el);
                 }
 
-                // Generar contenido interno según el estado
-                let innerHTML = `<div class="task-title">${task.title}</div>`;
-                
+                const bodyEl = el.querySelector('.card-body');
+
+                // Lógica de actualización selectiva
                 if (task.status === 'downloading') {
-                    el.className = 'task-card downloading';
-                    innerHTML += `
-                        <div class="progress-bar-bg"><div class="progress-bar" style="width: ${task.percent}%"></div></div>
-                        <div class="task-meta"><span>${task.percent}%</span><span>${task.speed}</span></div>
-                    `;
+                    if (el.dataset.status !== 'downloading') {
+                        el.className = 'task-card downloading';
+                        el.dataset.status = 'downloading';
+                        // Rellenar la estructura solo una vez al cambiar de estado
+                        bodyEl.innerHTML = `
+                            <div class="progress-bar-bg"><div class="progress-bar" id="bar-${task.id}" style="width: 0%"></div></div>
+                            <div class="task-meta"><span id="pct-${task.id}">0%</span><span id="spd-${task.id}">0 B/s</span></div>
+                        `;
+                    }
+                    
+                    // Modificamos únicamente los números sin romper la estructura
+                    document.getElementById(`bar-${task.id}`).style.width = task.percent + '%';
+                    document.getElementById(`pct-${task.id}`).textContent = task.percent + '%';
+                    document.getElementById(`spd-${task.id}`).textContent = task.speed;
+                    
                     if (el.parentElement !== colPending) colPending.appendChild(el);
                 } 
                 else if (task.status === 'pending') {
-                    el.className = 'task-card';
-                    innerHTML += `<div class="task-meta">A la cua...</div>`;
+                    if (el.dataset.status !== 'pending') {
+                        el.className = 'task-card';
+                        el.dataset.status = 'pending';
+                        bodyEl.innerHTML = `<div class="task-meta">A la cua...</div>`;
+                    }
                     if (el.parentElement !== colPending) colPending.appendChild(el);
                 } 
                 else if (task.status === 'finished') {
-                    el.className = 'task-card finished';
-                    if (el.parentElement !== colFinished) colFinished.insertBefore(el, colFinished.firstChild);
+                    if (el.dataset.status !== 'finished') {
+                        el.className = 'task-card finished';
+                        el.dataset.status = 'finished';
+                        bodyEl.innerHTML = `<div class="task-meta">Completat</div>`;
+                        
+                        if (el.parentElement !== colFinished) colFinished.insertBefore(el, colFinished.firstChild);
+                    }
                 } 
                 else if (task.status === 'failed') {
-                    el.className = 'task-card failed';
-                    if (el.parentElement !== colFailed) colFailed.insertBefore(el, colFailed.firstChild);
+                    if (el.dataset.status !== 'failed') {
+                        el.className = 'task-card failed';
+                        el.dataset.status = 'failed';
+                        bodyEl.innerHTML = `<div class="task-meta">Cancel·lat / Error</div>`;
+                        
+                        if (el.parentElement !== colFailed) colFailed.insertBefore(el, colFailed.firstChild);
+                    }
                 }
-
-                el.innerHTML = innerHTML;
             });
         }
 
-        async function sendAction(action) {
+        // Exponemos la acción al contexto global de la ventana
+        window.sendAction = async function(action) {
             await fetch('/action', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: action })
             });
-        }
+        };
     </script>
 </body>
 </html>
