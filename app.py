@@ -7,6 +7,7 @@ from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 import uuid
 import time
+import re
 
 app = Flask(__name__)
 DOWNLOAD_DIR = '/downloads'
@@ -49,17 +50,50 @@ def get_folder_name(url):
     try:
         clean_url = url.rstrip('/')
         parts = clean_url.split('/')
+        
+        # 1. Si es una temporada entera, extraemos los datos directamente de la URL
         if 'videos' in parts:
             idx = parts.index('videos')
             series = parts[idx-1].replace('-', ' ').title()
             season = parts[idx+1].replace('-', ' ').capitalize()
             return f"{series} - {season}"
+            
+        # 2. Si es un capítulo suelto, extraemos la serie y raspeamos la web para la temporada
         elif 'video' in parts:
             idx = parts.index('video')
             series = parts[idx-1].replace('-', ' ').title()
+            
+            # Petición a la web
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            res = requests.get(url, headers=headers, timeout=10)
+            soup = BeautifulSoup(res.text, 'html.parser')
+            
+            # Recopilamos el título y los metadatos para analizarlos
+            texts_to_search = []
+            if soup.title: 
+                texts_to_search.append(soup.title.string)
+            for meta in soup.find_all('meta'):
+                if meta.get('content'): 
+                    texts_to_search.append(meta.get('content'))
+            
+            # Buscamos patrones de temporada usando expresiones regulares
+            for text in texts_to_search:
+                # Busca "Temporada X" literal
+                match = re.search(r'(Temporada\s+\d+)', text, re.IGNORECASE)
+                if match:
+                    return f"{series} - {match.group(1).capitalize()}"
+                
+                # Busca formato "T1", "T2"... (Suele aparecer como T1xC14)
+                match_t = re.search(r'\bT(\d+)\b', text, re.IGNORECASE)
+                if match_t:
+                    return f"{series} - Temporada {match_t.group(1)}"
+            
+            # Si no menciona la temporada por ningún lado, devolvemos solo la serie
             return series
-    except Exception:
-        pass
+            
+    except Exception as e:
+        print(f"Error obteniendo carpeta: {e}")
+        
     return "Descàrregues 3Cat"
 
 # Gestor de cola en segundo plano
