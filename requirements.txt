@@ -1,2 +1,4 @@
 Flask==3.0.0
 yt-dlp
+requests
+beautifulsoup4
