@@ -59,6 +59,20 @@
     <script>
         let pollInterval;
 
+        // Comprobar el estado global al cargar la página desde cualquier dispositivo
+        window.onload = async () => {
+            const res = await fetch('/status');
+            const data = await res.json();
+            
+            if (data.is_active) {
+                document.getElementById('progress-container').style.display = 'block';
+                document.querySelector('.progress-bar-bg').style.display = 'block';
+                document.getElementById('btn-pause').style.display = 'block';
+                document.getElementById('btn-stop').style.display = 'block';
+                startPolling();
+            }
+        };
+        
         document.getElementById('downloadForm').onsubmit = async (e) => {
             e.preventDefault();
             const formData = new FormData(e.target);
