@@ -1,125 +1,199 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="ca">
 <head>
     <meta charset="UTF-8">
     <title>Descarregador TV3/3XL</title>
     <style>
-        body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
-        .form-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; font-weight: bold; }
-        input[type="text"], select { width: 100%; padding: 10px; box-sizing: border-box; }
-        button { padding: 10px 20px; border: none; cursor: pointer; color: white; border-radius: 4px; font-weight: bold;}
-        .btn-primary { background-color: #007bff; }
+        body { font-family: Arial, sans-serif; max-width: 900px; margin: 30px auto; padding: 20px; }
+        .form-row { display: flex; gap: 15px; margin-bottom: 15px; }
+        .form-group { flex: 1; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; font-size: 14px; }
+        input[type="text"], select { width: 100%; padding: 10px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+        
+        .btn-primary { padding: 10px 20px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
         .btn-primary:hover { background-color: #0056b3; }
-        .btn-pause { background-color: #ffc107; color: black; }
+        
+        .controls { margin-top: 15px; display: none; gap: 10px; }
+        .controls button { padding: 8px 15px; border: none; cursor: pointer; color: white; border-radius: 4px; font-weight: bold; }
+        .btn-pause { background-color: #ffc107; color: black !important; }
         .btn-resume { background-color: #17a2b8; }
         .btn-stop { background-color: #dc3545; }
+
+        /* Cuadrícula de columnas */
+        .board { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-top: 30px; }
+        .column { background: #f8f9fa; border-radius: 8px; padding: 15px; border: 1px solid #ddd; min-height: 200px; }
+        .column-header { font-weight: bold; text-align: center; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 3px solid; }
         
-        #progress-container { display: none; margin-top: 30px; padding: 20px; border: 1px solid #ddd; border-radius: 8px; }
-        #video-title { margin: 0 0 10px 0; font-size: 16px; color: #333; }
-        .progress-bar-bg { background-color: #e9ecef; width: 100%; height: 20px; border-radius: 10px; overflow: hidden; margin-bottom: 10px; }
-        #progress-bar { background-color: #28a745; width: 0%; height: 100%; transition: width 0.3s ease; }
-        .stats { display: flex; justify-content: space-between; font-size: 14px; color: #555; font-weight: bold; }
-        .controls { margin-top: 15px; display: flex; gap: 10px; }
+        .header-grey { border-color: #6c757d; color: #6c757d; }
+        .header-green { border-color: #28a745; color: #28a745; }
+        .header-red { border-color: #dc3545; color: #dc3545; }
+
+        /* Tarjetas de descargas */
+        .task-card { background: white; border-radius: 6px; padding: 10px; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-left: 4px solid #ccc; }
+        .task-card.downloading { border-left-color: #007bff; }
+        .task-card.finished { border-left-color: #28a745; }
+        .task-card.failed { border-left-color: #dc3545; }
+        
+        .task-title { font-size: 13px; font-weight: bold; margin-bottom: 8px; word-break: break-all; }
+        .task-meta { font-size: 11px; color: #666; display: flex; justify-content: space-between; }
+        
+        .progress-bar-bg { background-color: #e9ecef; width: 100%; height: 8px; border-radius: 4px; overflow: hidden; margin-top: 5px; margin-bottom: 5px; }
+        .progress-bar { background-color: #007bff; width: 0%; height: 100%; transition: width 0.3s ease; }
     </style>
+    <!-- Motor de animaciones fluidas (Aceleración/Desaceleración) -->
+    <script src="https://cdn.jsdelivr.net/npm/@formkit/auto-animate@1/index.min.js"></script>
 </head>
 <body>
     <h2>Descarregador vídeos TV3/3XL</h2>
     <form id="downloadForm">
-        <div class="form-group">
+        <div class="form-group" style="margin-bottom: 15px;">
             <label for="url">URL de la Temporada/Capítol:</label>
             <input type="text" id="url" name="url" required placeholder="https://www.3cat.cat/...">
         </div>
-        <div class="form-group">
-            <label for="quality">Qualitat:</label>
-            <select id="quality" name="quality">
-                <option value="media" selected>Mitjana (Fins a 540p)</option>
-                <option value="alta">Alta (Màxima disponible)</option>
-            </select>
-
+        
+        <div class="form-row">
+            <div class="form-group">
+                <label for="quality">Qualitat:</label>
+                <select id="quality" name="quality">
+                    <option value="media" selected>Mitjana (Fins a 540p)</option>
+                    <option value="alta">Alta (Màxima disponible)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="concurrent">Descàrregues simultànies:</label>
+                <select id="concurrent" name="concurrent">
+                    <option value="1">1 (Recomanat)</option>
+                    <option value="2">2 arxius</option>
+                    <option value="3">3 arxius</option>
+                    <option value="5">5 arxius</option>
+                </select>
+            </div>
         </div>
-        <button type="submit" class="btn-primary">Iniciar Descàrrega</button>
+        <button type="submit" class="btn-primary">Afegir a la cua</button>
     </form>
 
-    <div id="progress-container">
-        <h4 id="video-title">Preparant...</h4>
-        <div class="progress-bar-bg">
-            <div id="progress-bar"></div>
+    <div class="controls" id="controls">
+        <button id="btn-pause" class="btn-pause" onclick="sendAction('pause')">Pausar</button>
+        <button id="btn-stop" class="btn-stop" onclick="sendAction('stop')">Cancel·lar tot</button>
+    </div>
+
+    <div class="board" id="board" style="display: none;">
+        <div class="column">
+            <div class="column-header header-grey">En curs / Pendents</div>
+            <div id="col-pending"></div>
         </div>
-        <div class="stats">
-            <span id="percent-text">0%</span>
-            <span id="speed-text">0 B/s</span>
+        <div class="column">
+            <div class="column-header header-green">Descarregats</div>
+            <div id="col-finished"></div>
         </div>
-        <div class="controls">
-            <button id="btn-pause" class="btn-pause" onclick="sendAction('pause')">Pausar</button>
-            <button id="btn-stop" class="btn-stop" onclick="sendAction('stop')">Finalitzar</button>
+        <div class="column">
+            <div class="column-header header-red">Cancel·lats / Fallides</div>
+            <div id="col-failed"></div>
         </div>
     </div>
 
     <script>
         let pollInterval;
+        let isPolling = false;
 
-        // Comprobar el estado global al cargar la página desde cualquier dispositivo
-        window.onload = async () => {
+        // Activar animaciones en las 3 columnas
+        window.addEventListener('DOMContentLoaded', () => {
+            autoAnimate(document.getElementById('col-pending'));
+            autoAnimate(document.getElementById('col-finished'));
+            autoAnimate(document.getElementById('col-failed'));
+            checkStatusOnLoad();
+        });
+
+        async function checkStatusOnLoad() {
             const res = await fetch('/status');
             const data = await res.json();
-            
-            if (data.is_active) {
-                document.getElementById('progress-container').style.display = 'block';
-                document.querySelector('.progress-bar-bg').style.display = 'block';
-                document.getElementById('btn-pause').style.display = 'block';
-                document.getElementById('btn-stop').style.display = 'block';
-                startPolling();
+            if (data.tasks && data.tasks.length > 0) {
+                showBoard();
+                if (!isPolling) startPolling();
             }
-        };
-        
+        }
+
         document.getElementById('downloadForm').onsubmit = async (e) => {
             e.preventDefault();
             const formData = new FormData(e.target);
-            
             const response = await fetch('/download', { method: 'POST', body: formData });
             const result = await response.json();
             
             if(result.status === 'success') {
-                document.getElementById('progress-container').style.display = 'block';
-                document.querySelector('.progress-bar-bg').style.display = 'block'; // Mostrar barra
-                document.getElementById('btn-pause').style.display = 'block';
-                document.getElementById('btn-stop').style.display = 'block';
-                startPolling();
-            } else {
-                alert(result.message);
+                e.target.reset(); // Limpia la URL para añadir más cosas
+                showBoard();
+                if (!isPolling) startPolling();
             }
         };
 
+        function showBoard() {
+            document.getElementById('board').style.display = 'grid';
+            document.getElementById('controls').style.display = 'flex';
+        }
+
         function startPolling() {
-            if (pollInterval) clearInterval(pollInterval);
-            
+            isPolling = true;
             pollInterval = setInterval(async () => {
                 const res = await fetch('/status');
                 const data = await res.json();
-                
-                document.getElementById('video-title').textContent = data.title;
-                document.getElementById('progress-bar').style.width = data.percent + '%';
-                document.getElementById('percent-text').textContent = data.percent + '%';
-                document.getElementById('speed-text').textContent = data.speed;
-                
-                const btnPause = document.getElementById('btn-pause');
-                if (data.is_paused) {
-                    btnPause.textContent = 'Reprendre';
-                    btnPause.className = 'btn-resume';
-                    btnPause.onclick = () => sendAction('resume');
-                } else {
-                    btnPause.textContent = 'Pausar';
-                    btnPause.className = 'btn-pause';
-                    btnPause.onclick = () => sendAction('pause');
-                }
-                
-                if (!data.is_active && data.percent === 100) {
-                    clearInterval(pollInterval);
-                    document.getElementById('btn-pause').style.display = 'none';
-                    document.getElementById('btn-stop').style.display = 'none';
-                }
+                updateDOM(data);
             }, 1000);
+        }
+
+        function updateDOM(data) {
+            const colPending = document.getElementById('col-pending');
+            const colFinished = document.getElementById('col-finished');
+            const colFailed = document.getElementById('col-failed');
+
+            // Actualizar el botón de pausa
+            const btnPause = document.getElementById('btn-pause');
+            if (data.is_paused) {
+                btnPause.textContent = 'Reprendre';
+                btnPause.className = 'btn-resume';
+                btnPause.onclick = () => sendAction('resume');
+            } else {
+                btnPause.textContent = 'Pausar';
+                btnPause.className = 'btn-pause';
+                btnPause.onclick = () => sendAction('pause');
+            }
+
+            data.tasks.forEach(task => {
+                let el = document.getElementById(task.id);
+                
+                // Si no existe, creamos la tarjeta
+                if (!el) {
+                    el = document.createElement('div');
+                    el.id = task.id;
+                    el.className = 'task-card';
+                }
+
+                // Generar contenido interno según el estado
+                let innerHTML = `<div class="task-title">${task.title}</div>`;
+                
+                if (task.status === 'downloading') {
+                    el.className = 'task-card downloading';
+                    innerHTML += `
+                        <div class="progress-bar-bg"><div class="progress-bar" style="width: ${task.percent}%"></div></div>
+                        <div class="task-meta"><span>${task.percent}%</span><span>${task.speed}</span></div>
+                    `;
+                    if (el.parentElement !== colPending) colPending.appendChild(el);
+                } 
+                else if (task.status === 'pending') {
+                    el.className = 'task-card';
+                    innerHTML += `<div class="task-meta">A la cua...</div>`;
+                    if (el.parentElement !== colPending) colPending.appendChild(el);
+                } 
+                else if (task.status === 'finished') {
+                    el.className = 'task-card finished';
+                    if (el.parentElement !== colFinished) colFinished.insertBefore(el, colFinished.firstChild);
+                } 
+                else if (task.status === 'failed') {
+                    el.className = 'task-card failed';
+                    if (el.parentElement !== colFailed) colFailed.insertBefore(el, colFailed.firstChild);
+                }
+
+                el.innerHTML = innerHTML;
+            });
         }
 
         async function sendAction(action) {
@@ -128,16 +202,6 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: action })
             });
-            
-            if (action === 'stop') {
-                clearInterval(pollInterval);
-                document.getElementById('video-title').textContent = 'Descàrregues finalitzades';
-                document.getElementById('speed-text').textContent = '';
-                document.getElementById('percent-text').textContent = '';
-                document.querySelector('.progress-bar-bg').style.display = 'none'; // Ocultar barra verde
-                document.getElementById('btn-pause').style.display = 'none';
-                document.getElementById('btn-stop').style.display = 'none';
-            }
         }
     </script>
 </body>
