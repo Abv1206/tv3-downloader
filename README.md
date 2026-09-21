@@ -19,7 +19,7 @@ version: "3.8"
 services:
   tv3_downloader:
     container_name: tv3_downloader
-    image: ghcr.io/YOUR_GITHUB_USERNAME/tv3-downloader:latest
+    image: ghcr.io/abv1206/tv3-downloader:latest
     restart: unless-stopped
     ports:
       - "5000:5000"
