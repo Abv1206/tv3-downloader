@@ -52,32 +52,58 @@ def progress_hook(d):
         download_state['current_file'] = d.get('filename', '')
 
 def cleanup_temp_files():
-    """Barre y elimina todos los archivos parciales del directorio"""
-    for filename in os.listdir(DOWNLOAD_DIR):
-        if filename.endswith('.part') or filename.endswith('.ytdl'):
-            try:
-                os.remove(os.path.join(DOWNLOAD_DIR, filename))
-            except:
-                pass
+    """Cerca i elimina tots els arxius parcials recursivament a les subcarpetes"""
+    for root, dirs, files in os.walk(DOWNLOAD_DIR):
+        for filename in files:
+            if filename.endswith('.part') or filename.endswith('.ytdl'):
+                try:
+                    os.remove(os.path.join(root, filename))
+                except:
+                    pass
+
+def get_folder_name(url):
+    """Extreu el nom de la sèrie i temporada directament de la URL"""
+    try:
+        clean_url = url.rstrip('/')
+        parts = clean_url.split('/')
+        
+        # Si és una temporada sencera
+        if 'videos' in parts:
+            idx = parts.index('videos')
+            series = parts[idx-1].replace('-', ' ').title()
+            season = parts[idx+1].replace('-', ' ').capitalize()
+            return f"{series} - {season}"
+        # Si és un capítol solt
+        elif 'video' in parts:
+            idx = parts.index('video')
+            series = parts[idx-1].replace('-', ' ').title()
+            return series
+    except Exception:
+        pass
+    return "Descàrregues 3Cat"
 
 def download_worker(url, quality):
     urls = extract_links_from_season(url)
     format_selector = 'best[height<=720]/bestvideo[height<=720]+bestaudio/best' if quality == 'media' else 'bestvideo+bestaudio/best'
 
+    # Determinar subcarpeta (yt-dlp la crea automàticament si no existeix)
+    folder_name = get_folder_name(url)
+    target_dir = os.path.join(DOWNLOAD_DIR, folder_name)
+
     ydl_opts = {
         'format': format_selector,
-        'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
+        'outtmpl': os.path.join(target_dir, '%(title)s.%(ext)s'),
         'merge_output_format': 'mkv',
         'ignoreerrors': True,
         'nocolor': True,
         'progress_hooks': [progress_hook],
         
-        # Subtítulos
+        # Subtítols
         'writesubtitles': True,
         'subtitleslangs': ['ca', 'es', 'en'], 
         'postprocessors': [{'key': 'FFmpegEmbedSubtitle'}],
         
-        # Forzar metadatos solo de la pista de audio principal (0) a catalán
+        # Forçar metadades només de la pista d'àudio principal (0) a català
         'postprocessor_args': ['-metadata:s:a:0', 'language=cat']
     }
 
@@ -89,7 +115,6 @@ def download_worker(url, quality):
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # Iteramos uno a uno. Si se pulsa detener, rompemos el bucle limpiamente
             for u in urls:
                 if stop_event.is_set():
                     break
