@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Descargador TV3</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="text"], select { width: 100%; padding: 10px; box-sizing: border-box; }
+        button { padding: 10px 20px; background-color: #007bff; color: white; border: none; cursor: pointer; }
+        button:hover { background-color: #0056b3; }
+        #message { margin-top: 20px; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h2>Descargador Recursivo</h2>
+    <form id="downloadForm">
+        <div class="form-group">
+            <label for="url">URL de la Temporada/Capítulo:</label>
+            <input type="text" id="url" name="url" required placeholder="https://www.ccma.cat/3cat/...">
+        </div>
+        <div class="form-group">
+            <label for="quality">Calidad:</label>
+            <select id="quality" name="quality">
+                <option value="media" selected>Media (Hasta 720p)</option>
+                <option value="alta">Alta (Máxima disponible)</option>
+            </select>
+        </div>
+        <button type="submit">Iniciar Descarga</button>
+    </form>
+    <div id="message"></div>
+
+    <script>
+        document.getElementById('downloadForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const messageDiv = document.getElementById('message');
+            
+            messageDiv.textContent = "Procesando...";
+            messageDiv.style.color = "black";
+
+            const response = await fetch('/download', {
+                method: 'POST',
+                body: formData
+            });
+            const result = await response.json();
+            
+            if(result.status === 'success') {
+                messageDiv.textContent = result.message;
+                messageDiv.style.color = "green";
+                e.target.reset();
+            } else {
+                messageDiv.textContent = result.message;
+                messageDiv.style.color = "red";
+            }
+        };
+    </script>
+</body>
+</html>
