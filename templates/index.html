@@ -105,6 +105,16 @@
             checkStatusOnLoad();
         });
 
+        // Escucha cambios en el desplegable y avisa al backend instantáneamente
+        document.getElementById('concurrent').addEventListener('change', async (e) => {
+            const newValue = e.target.value;
+            await fetch('/set_concurrent', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ concurrent: newValue })
+            });
+        });
+
         async function checkStatusOnLoad() {
             const res = await fetch('/status');
             const data = await res.json();
@@ -143,6 +153,10 @@
         }
 
         function updateDOM(data) {
+            if (data.max_concurrent) {
+                document.getElementById('concurrent').value = data.max_concurrent;
+            }
+
             const colPending = document.getElementById('col-pending');
             const colFinished = document.getElementById('col-finished');
             const colFailed = document.getElementById('col-failed');

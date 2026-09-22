@@ -173,14 +173,9 @@ def download_worker(task_id):
         task['status'] = 'failed'
 
 
-def extract_and_queue(url, quality, concurrent):
-    global max_concurrent
-    max_concurrent = int(concurrent)
-    
-    # 1. Calculamos la carpeta base UNA SOLA VEZ usando la URL original (con el scraper inteligente)
+def extract_and_queue(url, quality):
+    # Ya no tocamos max_concurrent aquí
     base_folder = get_folder_name(url)
-    
-    # 2. Extraemos todos los links de los capítulos
     urls = extract_links_from_season(url)
     
     with queue_lock:
@@ -195,7 +190,7 @@ def extract_and_queue(url, quality, concurrent):
                 'percent': 0,
                 'speed': '',
                 'quality': quality,
-                'folder': base_folder  # 3. Inyectamos la MISMA carpeta a todos los capítulos
+                'folder': base_folder
             }
 
 @app.route('/')
@@ -206,19 +201,26 @@ def index():
 def start_download():
     url = request.form.get('url')
     quality = request.form.get('quality')
-    concurrent = request.form.get('concurrent', 1)
     
     if not url:
         return jsonify({"status": "error", "message": "URL no proporcionada."})
 
-    threading.Thread(target=extract_and_queue, args=(url, quality, concurrent)).start()
+    threading.Thread(target=extract_and_queue, args=(url, quality)).start()
     return jsonify({"status": "success"})
+
+# Nueva ruta para actualizar el límite en tiempo real
+@app.route('/set_concurrent', methods=['POST'])
+def set_concurrent():
+    global max_concurrent
+    max_concurrent = int(request.json.get('concurrent', 1))
+    return jsonify({"status": "success", "max_concurrent": max_concurrent})
 
 @app.route('/status', methods=['GET'])
 def get_status():
     return jsonify({
         'is_paused': not pause_event.is_set(),
-        'tasks': list(tasks.values())
+        'tasks': list(tasks.values()),
+        'max_concurrent': max_concurrent # Enviamos el límite actual a la interfaz
     })
 
 @app.route('/action', methods=['POST'])
@@ -236,7 +238,7 @@ def handle_action():
                 if t['status'] in ['pending', 'downloading']:
                     t['status'] = 'failed'
         cleanup_temp_files()
-        threading.Timer(2.0, stop_event.clear).start() # Restablece para futuras descargas
+        threading.Timer(2.0, stop_event.clear).start()
     return jsonify({"status": "success"})
 
 if __name__ == '__main__':
