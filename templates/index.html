@@ -160,18 +160,57 @@
             const colPending = document.getElementById('col-pending');
             const colFinished = document.getElementById('col-finished');
             const colFailed = document.getElementById('col-failed');
+            const submitBtn = document.querySelector('#downloadForm button');
+            const controls = document.getElementById('controls');
 
-            const btnPause = document.getElementById('btn-pause');
-            if (data.is_paused) {
-                btnPause.textContent = 'Reprendre';
-                btnPause.className = 'btn-resume';
-                btnPause.onclick = () => sendAction('resume');
-            } else {
-                btnPause.textContent = 'Pausar';
-                btnPause.className = 'btn-pause';
-                btnPause.onclick = () => sendAction('pause');
+            // 1. Si el backend vacía la lista, ocultamos el tablero y lo reiniciamos de cero
+            if (data.tasks.length === 0) {
+                document.getElementById('board').style.display = 'none';
+                controls.style.display = 'none';
+                submitBtn.textContent = 'Iniciar Descàrrega';
+                colPending.innerHTML = '';
+                colFinished.innerHTML = '';
+                colFailed.innerHTML = '';
+                return; // Salimos de la función
             }
 
+            const activeTasks = data.tasks.filter(t => t.status === 'pending' || t.status === 'downloading');
+            
+            // 2. Modificación dinámica del botón principal del formulario
+            if (activeTasks.length > 0) {
+                submitBtn.textContent = 'Afegir a la cua';
+            } else {
+                submitBtn.textContent = 'Iniciar Descàrrega';
+            }
+
+            // 3. Gestión inteligente de los botones de control inferiores
+            const btnPause = document.getElementById('btn-pause');
+            const btnStop = document.getElementById('btn-stop');
+            
+            if (activeTasks.length === 0) {
+                // Cuando terminan todas las descargas, ofrecemos limpiar el historial
+                btnPause.style.display = 'none';
+                btnStop.textContent = 'Netejar historial';
+                btnStop.className = 'btn-stop';
+                btnStop.onclick = () => window.sendAction('clear');
+            } else {
+                btnPause.style.display = 'block';
+                btnStop.textContent = 'Cancel·lar tot';
+                btnStop.className = 'btn-stop';
+                btnStop.onclick = () => window.sendAction('stop');
+                
+                if (data.is_paused) {
+                    btnPause.textContent = 'Reprendre';
+                    btnPause.className = 'btn-resume';
+                    btnPause.onclick = () => window.sendAction('resume');
+                } else {
+                    btnPause.textContent = 'Pausar';
+                    btnPause.className = 'btn-pause';
+                    btnPause.onclick = () => window.sendAction('pause');
+                }
+            }
+
+            // 4. Renderizado inyectado de tarjetas
             data.tasks.forEach(task => {
                 let el = document.getElementById(task.id);
                 

@@ -22,6 +22,10 @@ pause_event.set()
 stop_event = threading.Event()
 
 def extract_links_from_season(url):
+    # Si la URL es de un capítulo suelto, devolvemos solo ese enlace sin raspear la web entera
+    if '/video/' in url and '/videos/' not in url:
+        return [url]
+        
     try:
         headers = {'User-Agent': 'Mozilla/5.0'}
         response = requests.get(url, headers=headers)
@@ -233,12 +237,13 @@ def handle_action():
     elif action == 'stop':
         stop_event.set()
         pause_event.set()
-        with queue_lock:
-            for t in tasks.values():
-                if t['status'] in ['pending', 'downloading']:
-                    t['status'] = 'failed'
         cleanup_temp_files()
+        with queue_lock:
+            tasks.clear() # Al cancelar, vaciamos el tablero de inmediato
         threading.Timer(2.0, stop_event.clear).start()
+    elif action == 'clear':
+        with queue_lock:
+            tasks.clear() # Limpieza manual del historial cuando finalizan las descargas
     return jsonify({"status": "success"})
 
 if __name__ == '__main__':
