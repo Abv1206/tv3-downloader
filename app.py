@@ -22,7 +22,7 @@ pause_event.set()
 stop_event = threading.Event()
 
 def extract_links_from_season(url):
-    # Si la URL es de un capítulo suelto, devolvemos solo ese enlace sin raspear la web entera
+    # Si la URL es de un capítulo suelto, devolvemos solo ese enlace
     if '/video/' in url and '/videos/' not in url:
         return [url]
         
@@ -31,14 +31,54 @@ def extract_links_from_season(url):
         response = requests.get(url, headers=headers)
         soup = BeautifulSoup(response.text, 'html.parser')
         links = []
+        
+        # 1. Extraemos los vídeos de la página principal estática
         for a in soup.find_all('a', href=True):
             href = a['href']
             if '/video/' in href:
                 full_url = urljoin(url, href)
                 if full_url not in links and full_url != url:
                     links.append(full_url)
+                    
+        # 2. Cazamos el ID del programa para la paginación dinámica usando Regex
+        # Buscamos un patrón tipo: contenidorVideosStandAloneDefault/2/120086583
+        match = re.search(r'contenidorVideosStandAloneDefault/\d+/(\d+)', response.text)
+        
+        if match:
+            program_id = match.group(1)
+            pagina = 2 # La petición inicial equivale a la página 1
+            
+            while True:
+                # Construimos la URL secreta de la API
+                api_url = f"https://www.3cat.cat/Comu/standalone/tv3_sx3_item_fitxa-programa_videos/contenidor/contenidorVideosStandAloneDefault/{pagina}/{program_id}/"
+                api_res = requests.get(api_url, headers=headers)
+                
+                # Si la página da error 404, hemos llegado al final
+                if api_res.status_code != 200:
+                    break
+                    
+                # Parseamos el fragmento de HTML devuelto
+                api_soup = BeautifulSoup(api_res.text, 'html.parser')
+                nuevos_enlaces = 0
+                
+                for a in api_soup.find_all('a', href=True):
+                    href = a['href']
+                    if '/video/' in href:
+                        full_url = urljoin(url, href)
+                        if full_url not in links and full_url != url:
+                            links.append(full_url)
+                            nuevos_enlaces += 1
+                            
+                # Si el fragmento HTML no contiene vídeos nuevos, detenemos el bucle
+                if nuevos_enlaces == 0:
+                    break
+                    
+                pagina += 1 # Avanzamos silenciosamente a la siguiente página
+                
         return links
-    except Exception:
+        
+    except Exception as e:
+        print(f"Error procesando enlaces: {e}")
         return [url]
 
 def cleanup_temp_files():
