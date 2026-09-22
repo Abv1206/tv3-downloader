@@ -172,6 +172,10 @@
                 colFinished.innerHTML = '';
                 colFailed.innerHTML = '';
                 return; // Salimos de la función
+            } else {
+                // Si hay tareas, forzamos la visibilidad (vital para cuando el scraping tarda unos segundos)
+                document.getElementById('board').style.display = 'grid';
+                controls.style.display = 'flex';
             }
 
             const activeTasks = data.tasks.filter(t => t.status === 'pending' || t.status === 'downloading');
