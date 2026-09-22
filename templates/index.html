@@ -220,11 +220,14 @@
                     el.className = 'task-card';
                     el.dataset.status = ''; 
                     el.innerHTML = `
-                        <div class="task-title">${task.title}</div>
+                        <div class="task-title" id="title-${task.id}">${task.title}</div>
                         <div class="card-body"></div>
                     `;
                     colPending.appendChild(el);
                 }
+
+                // Actualizamos el título dinámicamente en cuanto yt-dlp descubre el nombre real
+                document.getElementById(`title-${task.id}`).textContent = task.title;
 
                 const bodyEl = el.querySelector('.card-body');
 
