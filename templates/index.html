@@ -94,9 +94,9 @@
     <script>
         let pollInterval;
         let isPolling = false;
+        let wasExtracting = false; // Rastrea si venimos de un estado de búsqueda
 
         window.addEventListener('DOMContentLoaded', () => {
-            // Inicializamos AutoAnimate desde la variable global
             if (window.autoAnimate) {
                 window.autoAnimate(document.getElementById('col-pending'));
                 window.autoAnimate(document.getElementById('col-finished'));
@@ -105,26 +105,15 @@
             checkStatusOnLoad();
         });
 
-        // Escucha cambios en el desplegable y avisa al backend instantáneamente
-        document.getElementById('concurrent').addEventListener('change', async (e) => {
-            const newValue = e.target.value;
-            await fetch('/set_concurrent', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ concurrent: newValue })
-            });
-        });
-
         async function checkStatusOnLoad() {
             const res = await fetch('/status');
             const data = await res.json();
-            if (data.tasks && data.tasks.length > 0) {
+            if ((data.tasks && data.tasks.length > 0) || data.is_extracting) {
                 showBoard();
                 if (!isPolling) startPolling();
             }
         }
 
-        // Usamos addEventListener para mayor seguridad
         document.getElementById('downloadForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const formData = new FormData(e.target);
@@ -136,6 +125,15 @@
                 showBoard();
                 if (!isPolling) startPolling();
             }
+        });
+
+        document.getElementById('concurrent').addEventListener('change', async (e) => {
+            const newValue = e.target.value;
+            await fetch('/set_concurrent', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ concurrent: newValue })
+            });
         });
 
         function showBoard() {
@@ -163,36 +161,42 @@
             const submitBtn = document.querySelector('#downloadForm button');
             const controls = document.getElementById('controls');
 
-            // 1. Si el backend vacía la lista, ocultamos el tablero y lo reiniciamos de cero
-            if (data.tasks.length === 0) {
+            // Lógica de alerta por timeout o URL vacía
+            if (data.is_extracting) {
+                wasExtracting = true;
+            } else if (wasExtracting && data.tasks.length === 0) {
+                wasExtracting = false;
+                alert("No s'han trobat vídeos a la URL proporcionada o el temps d'espera ha finalitzat.");
+            }
+
+            // 1. Mostrar/Ocultar el tablero considerando la extracción activa
+            if (data.tasks.length === 0 && !data.is_extracting) {
                 document.getElementById('board').style.display = 'none';
                 controls.style.display = 'none';
                 submitBtn.textContent = 'Iniciar Descàrrega';
                 colPending.innerHTML = '';
                 colFinished.innerHTML = '';
                 colFailed.innerHTML = '';
-                return; // Salimos de la función
+                wasExtracting = false;
+                return;
             } else {
-                // Si hay tareas, forzamos la visibilidad (vital para cuando el scraping tarda unos segundos)
                 document.getElementById('board').style.display = 'grid';
                 controls.style.display = 'flex';
             }
 
             const activeTasks = data.tasks.filter(t => t.status === 'pending' || t.status === 'downloading');
             
-            // 2. Modificación dinámica del botón principal del formulario
-            if (activeTasks.length > 0) {
+            if (activeTasks.length > 0 || data.is_extracting) {
                 submitBtn.textContent = 'Afegir a la cua';
             } else {
                 submitBtn.textContent = 'Iniciar Descàrrega';
             }
 
-            // 3. Gestión inteligente de los botones de control inferiores
+            // 3. Botones de control
             const btnPause = document.getElementById('btn-pause');
             const btnStop = document.getElementById('btn-stop');
             
-            if (activeTasks.length === 0) {
-                // Cuando terminan todas las descargas, ofrecemos limpiar el historial
+            if (activeTasks.length === 0 && !data.is_extracting) {
                 btnPause.style.display = 'none';
                 btnStop.textContent = 'Netejar historial';
                 btnStop.className = 'btn-stop';
@@ -214,6 +218,25 @@
                 }
             }
 
+            // INYECCIÓN DE TARJETA DE CARGA VISUAL
+            if (data.is_extracting) {
+                let loadingEl = document.getElementById('loading-card');
+                if (!loadingEl) {
+                    loadingEl = document.createElement('div');
+                    loadingEl.id = 'loading-card';
+                    loadingEl.className = 'task-card';
+                    loadingEl.style.borderLeftColor = '#ffc107'; // Amarillo para alertar del proceso
+                    loadingEl.innerHTML = `
+                        <div class="task-title">Obtenint vídeos...</div>
+                        <div class="task-meta">Explorant la web, si us plau espera.</div>
+                    `;
+                    colPending.prepend(loadingEl);
+                }
+            } else {
+                let loadingEl = document.getElementById('loading-card');
+                if (loadingEl) loadingEl.remove();
+            }
+
             // 4. Renderizado inyectado de tarjetas
             data.tasks.forEach(task => {
                 let el = document.getElementById(task.id);
@@ -230,9 +253,7 @@
                     colPending.appendChild(el);
                 }
 
-                // Actualizamos el título dinámicamente en cuanto yt-dlp descubre el nombre real
                 document.getElementById(`title-${task.id}`).textContent = task.title;
-
                 const bodyEl = el.querySelector('.card-body');
 
                 if (task.status === 'downloading') {
@@ -278,13 +299,14 @@
             });
         }
 
-        async function sendAction(action) {
+        window.sendAction = async function(action) {
+            wasExtracting = false; // Reseteamos la alerta para que no salte al cancelar
             await fetch('/action', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: action })
             });
-        }
+        };
     </script>
 </body>
 </html>

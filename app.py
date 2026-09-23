@@ -16,6 +16,7 @@ DOWNLOAD_DIR = '/downloads'
 tasks = {}
 queue_lock = threading.Lock()
 max_concurrent = 1
+extracting_count = 0
 
 pause_event = threading.Event()
 pause_event.set()
@@ -218,24 +219,28 @@ def download_worker(task_id):
 
 
 def extract_and_queue(url, quality):
-    # Ya no tocamos max_concurrent aquí
-    base_folder = get_folder_name(url)
-    urls = extract_links_from_season(url)
-    
-    with queue_lock:
-        for u in urls:
-            task_id = str(uuid.uuid4())
-            temp_title = u.strip('/').split('/')[-1].replace('-', ' ').title()
-            tasks[task_id] = {
-                'id': task_id,
-                'title': temp_title,
-                'url': u,
-                'status': 'pending',
-                'percent': 0,
-                'speed': '',
-                'quality': quality,
-                'folder': base_folder
-            }
+    global extracting_count
+    extracting_count += 1  # Activamos el indicador de carga
+    try:
+        base_folder = get_folder_name(url)
+        urls = extract_links_from_season(url)
+        
+        with queue_lock:
+            for u in urls:
+                task_id = str(uuid.uuid4())
+                temp_title = u.strip('/').split('/')[-1].replace('-', ' ').title()
+                tasks[task_id] = {
+                    'id': task_id,
+                    'title': temp_title,
+                    'url': u,
+                    'status': 'pending',
+                    'percent': 0,
+                    'speed': '',
+                    'quality': quality,
+                    'folder': base_folder
+                }
+    finally:
+        extracting_count -= 1  # Lo desactivamos pase lo que pase (incluso si hay error)
 
 @app.route('/')
 def index():
@@ -264,7 +269,8 @@ def get_status():
     return jsonify({
         'is_paused': not pause_event.is_set(),
         'tasks': list(tasks.values()),
-        'max_concurrent': max_concurrent # Enviamos el límite actual a la interfaz
+        'max_concurrent': max_concurrent,
+        'is_extracting': extracting_count > 0  # Informamos a la web si estamos buscando enlaces
     })
 
 @app.route('/action', methods=['POST'])
