@@ -92,6 +92,10 @@ def cleanup_temp_files():
                     pass
 
 def get_folder_name(url):
+    # Función interna para limpiar caracteres prohibidos en SMB/Windows
+    def sanitize(name):
+        return re.sub(r'[<>:"/\\|?*]', '', name).strip()
+        
     try:
         clean_url = url.rstrip('/')
         parts = clean_url.split('/')
@@ -104,23 +108,21 @@ def get_folder_name(url):
             # Si hay algo después de /videos/ (ej: temporada-1), lo añadimos
             if idx + 1 < len(parts):
                 season = parts[idx+1].replace('-', ' ').capitalize()
-                return f"{series} - {season}"
+                return sanitize(f"{series} - {season}")
             else:
-                # Si no hay temporada (ej: /pokemon/videos), raspeamos el pgm_titol
+                # Si no hay temporada, raspeamos el pgm_titol
                 headers = {'User-Agent': 'Mozilla/5.0'}
                 res = requests.get(url, headers=headers, timeout=10)
                 soup = BeautifulSoup(res.text, 'html.parser')
                 
-                # Buscamos por clase o ID ignorando mayúsculas/minúsculas
                 titol_elem = soup.find(class_=re.compile(r'pgm_titol', re.IGNORECASE))
                 if not titol_elem:
                     titol_elem = soup.find(id=re.compile(r'pgm_titol', re.IGNORECASE))
                     
                 if titol_elem and titol_elem.text.strip():
-                    return titol_elem.text.strip()
+                    return sanitize(titol_elem.text.strip())
                 
-                # Si no encuentra la etiqueta, devuelve el nombre deducido de la URL (Ej: "Pokemon")
-                return series
+                return sanitize(series)
                 
         # 2. Rutas de un capítulo suelto
         elif 'video' in parts:
@@ -141,18 +143,18 @@ def get_folder_name(url):
             for text in texts_to_search:
                 match = re.search(r'(Temporada\s+\d+)', text, re.IGNORECASE)
                 if match:
-                    return f"{series} - {match.group(1).capitalize()}"
+                    return sanitize(f"{series} - {match.group(1).capitalize()}")
                 
                 match_t = re.search(r'\bT(\d+)\b', text, re.IGNORECASE)
                 if match_t:
-                    return f"{series} - Temporada {match_t.group(1)}"
+                    return sanitize(f"{series} - Temporada {match_t.group(1)}")
             
-            return series
+            return sanitize(series)
             
     except Exception as e:
         print(f"Error obteniendo carpeta principal: {e}")
         
-    # 3. SALVAVIDAS FINAL: Si la URL es rarísima y falla todo, buscamos el pgm_titol directamente
+    # 3. SALVAVIDAS FINAL
     try:
         headers = {'User-Agent': 'Mozilla/5.0'}
         res = requests.get(url, headers=headers, timeout=10)
@@ -161,7 +163,7 @@ def get_folder_name(url):
         if not titol_elem:
             titol_elem = soup.find(id=re.compile(r'pgm_titol', re.IGNORECASE))
         if titol_elem and titol_elem.text.strip():
-            return titol_elem.text.strip()
+            return sanitize(titol_elem.text.strip())
     except:
         pass
         
