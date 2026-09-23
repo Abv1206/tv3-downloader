@@ -96,24 +96,41 @@ def get_folder_name(url):
         clean_url = url.rstrip('/')
         parts = clean_url.split('/')
         
-        # 1. Si es una temporada entera, extraemos los datos directamente de la URL
+        # 1. Rutas de vistas generales o temporadas enteras
         if 'videos' in parts:
             idx = parts.index('videos')
             series = parts[idx-1].replace('-', ' ').title()
-            season = parts[idx+1].replace('-', ' ').capitalize()
-            return f"{series} - {season}"
             
-        # 2. Si es un capítulo suelto, extraemos la serie y raspeamos la web para la temporada
+            # Si hay algo después de /videos/ (ej: temporada-1), lo añadimos
+            if idx + 1 < len(parts):
+                season = parts[idx+1].replace('-', ' ').capitalize()
+                return f"{series} - {season}"
+            else:
+                # Si no hay temporada (ej: /pokemon/videos), raspeamos el pgm_titol
+                headers = {'User-Agent': 'Mozilla/5.0'}
+                res = requests.get(url, headers=headers, timeout=10)
+                soup = BeautifulSoup(res.text, 'html.parser')
+                
+                # Buscamos por clase o ID ignorando mayúsculas/minúsculas
+                titol_elem = soup.find(class_=re.compile(r'pgm_titol', re.IGNORECASE))
+                if not titol_elem:
+                    titol_elem = soup.find(id=re.compile(r'pgm_titol', re.IGNORECASE))
+                    
+                if titol_elem and titol_elem.text.strip():
+                    return titol_elem.text.strip()
+                
+                # Si no encuentra la etiqueta, devuelve el nombre deducido de la URL (Ej: "Pokemon")
+                return series
+                
+        # 2. Rutas de un capítulo suelto
         elif 'video' in parts:
             idx = parts.index('video')
             series = parts[idx-1].replace('-', ' ').title()
             
-            # Petición a la web
             headers = {'User-Agent': 'Mozilla/5.0'}
             res = requests.get(url, headers=headers, timeout=10)
             soup = BeautifulSoup(res.text, 'html.parser')
             
-            # Recopilamos el título y los metadatos para analizarlos
             texts_to_search = []
             if soup.title: 
                 texts_to_search.append(soup.title.string)
@@ -121,23 +138,32 @@ def get_folder_name(url):
                 if meta.get('content'): 
                     texts_to_search.append(meta.get('content'))
             
-            # Buscamos patrones de temporada usando expresiones regulares
             for text in texts_to_search:
-                # Busca "Temporada X" literal
                 match = re.search(r'(Temporada\s+\d+)', text, re.IGNORECASE)
                 if match:
                     return f"{series} - {match.group(1).capitalize()}"
                 
-                # Busca formato "T1", "T2"... (Suele aparecer como T1xC14)
                 match_t = re.search(r'\bT(\d+)\b', text, re.IGNORECASE)
                 if match_t:
                     return f"{series} - Temporada {match_t.group(1)}"
             
-            # Si no menciona la temporada por ningún lado, devolvemos solo la serie
             return series
             
     except Exception as e:
-        print(f"Error obteniendo carpeta: {e}")
+        print(f"Error obteniendo carpeta principal: {e}")
+        
+    # 3. SALVAVIDAS FINAL: Si la URL es rarísima y falla todo, buscamos el pgm_titol directamente
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        res = requests.get(url, headers=headers, timeout=10)
+        soup = BeautifulSoup(res.text, 'html.parser')
+        titol_elem = soup.find(class_=re.compile(r'pgm_titol', re.IGNORECASE))
+        if not titol_elem:
+            titol_elem = soup.find(id=re.compile(r'pgm_titol', re.IGNORECASE))
+        if titol_elem and titol_elem.text.strip():
+            return titol_elem.text.strip()
+    except:
+        pass
         
     return "Descàrregues 3Cat"
 
